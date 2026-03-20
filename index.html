@@ -1,400 +1,232 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-const FULL_ROWS = 8;
-const FULL_COLS = 8;
-const SELECTED_ROWS = [0, 1, 2, 3];
-const SELECTED_COLS = [2, 3];
-const CHANNEL_LABELS = [
-  "CH1 (r0,c2)", "CH2 (r0,c3)",
-  "CH3 (r1,c2)", "CH4 (r1,c3)",
-  "CH5 (r2,c2)", "CH6 (r2,c3)",
-  "CH7 (r3,c2)", "CH8 (r3,c3)",
-];
-const TIME_WINDOW_SEC = 5;
-const TRAJ_WINDOW_SEC = 8;
-const MAX_HISTORY = 800;
-
-function clamp(v, a, b) {
-  return Math.max(a, Math.min(b, v));
-}
-
-function interp1d(x, y, v) {
-  if (!x.length || !y.length || x.length !== y.length) return 0;
-  if (v <= 0) return 0;
-  if (v <= x[0]) return y[0];
-  if (v >= x[x.length - 1]) return y[y.length - 1];
-  for (let i = 0; i < x.length - 1; i++) {
-    if (v >= x[i] && v <= x[i + 1]) {
-      const t = (v - x[i]) / (x[i + 1] - x[i] || 1e-9);
-      return y[i] + t * (y[i + 1] - y[i]);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AD7147 Dashboard</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
     }
-  }
-  return 0;
-}
-
-function mapDeltaToPhysicalGrid(deltaSelected) {
-  // 4x2 -> 2x4 transpose
-  return [
-    [deltaSelected[0][0], deltaSelected[1][0], deltaSelected[2][0], deltaSelected[3][0]],
-    [deltaSelected[0][1], deltaSelected[1][1], deltaSelected[2][1], deltaSelected[3][1]],
-  ];
-}
-
-function estimateTrajectory(deltaSelected, prevState) {
-  const gridX = [
-    [-1.0, -0.3333, 0.3333, 1.0],
-    [-1.0, -0.3333, 0.3333, 1.0],
-  ];
-  const gridY = [
-    [1.0, 1.0, 1.0, 1.0],
-    [-1.0, -1.0, -1.0, -1.0],
-  ];
-  const mapped = mapDeltaToPhysicalGrid(deltaSelected);
-  const threshold = 20;
-  const weightAlpha = 0.35;
-  const posAlpha = 0.25;
-  const minTotalWeight = 30;
-
-  const rawWeights = mapped.map((row) => row.map((v) => Math.max(v - threshold, 0)));
-  const smoothWeights = rawWeights.map((row, r) =>
-    row.map((v, c) => weightAlpha * v + (1 - weightAlpha) * prevState.weights[r][c])
-  );
-
-  let total = 0;
-  for (const row of smoothWeights) for (const v of row) total += v;
-
-  if (total < minTotalWeight) {
-    return {
-      ...prevState,
-      active: false,
-      totalWeight: total,
-      mapped,
-      weights: smoothWeights,
-      angleDeg: 0,
-      dxNorm: 0,
-      dyNorm: 0,
-    };
-  }
-
-  let xRaw = 0;
-  let yRaw = 0;
-  for (let r = 0; r < 2; r++) {
-    for (let c = 0; c < 4; c++) {
-      xRaw += smoothWeights[r][c] * gridX[r][c];
-      yRaw += smoothWeights[r][c] * gridY[r][c];
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px;
     }
-  }
-  xRaw /= total + 1e-9;
-  yRaw /= total + 1e-9;
-
-  const x = clamp(posAlpha * xRaw + (1 - posAlpha) * prevState.x, -1, 1);
-  const y = clamp(posAlpha * yRaw + (1 - posAlpha) * prevState.y, -1, 1);
-
-  const leftSum = smoothWeights[0][0] + smoothWeights[0][1] + smoothWeights[1][0] + smoothWeights[1][1];
-  const rightSum = smoothWeights[0][2] + smoothWeights[0][3] + smoothWeights[1][2] + smoothWeights[1][3];
-  const topSum = smoothWeights[0].reduce((a, b) => a + b, 0);
-  const bottomSum = smoothWeights[1].reduce((a, b) => a + b, 0);
-  const dxNorm = (rightSum - leftSum) / (total + 1e-9);
-  const dyNorm = (topSum - bottomSum) / (total + 1e-9);
-  const angleDeg = Math.abs(dxNorm) + Math.abs(dyNorm) > 1e-9 ? (Math.atan2(dyNorm, dxNorm) * 180) / Math.PI : 0;
-
-  return {
-    x,
-    y,
-    angleDeg,
-    dxNorm,
-    dyNorm,
-    totalWeight: total,
-    active: true,
-    mapped,
-    weights: smoothWeights,
-  };
-}
-
-function extractSelected(full) {
-  return SELECTED_ROWS.map((r) => SELECTED_COLS.map((c) => full[r][c]));
-}
-
-function zeros(rows, cols) {
-  return Array.from({ length: rows }, () => Array(cols).fill(0));
-}
-
-function buildDemoFullMatrix(tick) {
-  const m = zeros(FULL_ROWS, FULL_COLS);
-  const cx = 2.6 + Math.sin(tick / 18) * 1.0;
-  const cy = 0.6 + Math.cos(tick / 23) * 0.8;
-  for (let r = 0; r < FULL_ROWS; r++) {
-    for (let c = 0; c < FULL_COLS; c++) {
-      const d2 = (r - cx) ** 2 + (c - (cy + 2)) ** 2;
-      m[r][c] = Math.round(Math.max(0, 2500 * Math.exp(-d2 / 1.4) + Math.random() * 35));
+    .card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+      margin-bottom: 20px;
     }
-  }
-  return m;
-}
-
-function Heatmap({ matrix, maxValue = 3000, unit = "" }) {
-  const rows = matrix.length;
-  const cols = matrix[0]?.length || 0;
-  return (
-    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {Array.from({ length: rows * cols }).map((_, idx) => {
-        const r = Math.floor(idx / cols);
-        const c = idx % cols;
-        const value = matrix[r][c] || 0;
-        const alpha = clamp(value / maxValue, 0, 1);
-        return (
-          <div
-            key={`${r}-${c}`}
-            className="rounded-2xl border p-4 text-center shadow-sm"
-            style={{ background: `rgba(37,99,235,${0.08 + 0.65 * alpha})` }}
-          >
-            <div className="text-xs text-slate-500">r{SELECTED_ROWS[r] ?? r}, c{SELECTED_COLS[c] ?? c}</div>
-            <div className="text-lg font-semibold text-slate-900">{value.toFixed(1)}</div>
-            <div className="text-xs text-slate-600">{unit}</div>
-          </div>
-        );
-      })}
+    h1, h2 {
+      margin-top: 0;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+    .grid-3 {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .cell {
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+      border: 1px solid #cbd5e1;
+      background: #dbeafe;
+      font-weight: bold;
+    }
+    .small {
+      font-size: 12px;
+      color: #475569;
+      font-weight: normal;
+    }
+    .status {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .status .item {
+      background: #f1f5f9;
+      border-radius: 16px;
+      padding: 14px;
+    }
+    canvas {
+      width: 100%;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+    }
+    @media (max-width: 1000px) {
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>AD7147 Receiver Web Dashboard</h1>
+      <div id="statusText">Demo mode | GitHub Pages deployed</div>
     </div>
-  );
-}
 
-function MiniLineChart({ data, color = "#2563eb", maxY = 3000, label }) {
-  const width = 220;
-  const height = 90;
-  const pad = 10;
-  const pts = data.slice(-80);
-  const path = pts
-    .map((v, i) => {
-      const x = pad + (i / Math.max(pts.length - 1, 1)) * (width - 2 * pad);
-      const y = height - pad - (clamp(v, 0, maxY) / Math.max(maxY, 1)) * (height - 2 * pad);
-      return `${i === 0 ? "M" : "L"}${x},${y}`;
-    })
-    .join(" ");
+    <div class="grid grid-3">
+      <div class="card">
+        <h2>Area / Delta</h2>
+        <div class="heatmap" id="deltaMap"></div>
+      </div>
 
-  return (
-    <div className="rounded-2xl border bg-white p-3 shadow-sm">
-      <div className="mb-2 text-sm font-medium text-slate-700">{label}</div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-24 w-full">
-        <rect x="0" y="0" width={width} height={height} fill="white" />
-        <path d={path} fill="none" stroke={color} strokeWidth="2.5" />
-      </svg>
-    </div>
-  );
-}
+      <div class="card">
+        <h2>Pressure</h2>
+        <div class="heatmap" id="pressureMap"></div>
+      </div>
 
-function TrajectoryPlot({ points, state }) {
-  const width = 460;
-  const height = 460;
-  const toSvgX = (x) => ((x + 1) / 2) * width;
-  const toSvgY = (y) => height - ((y + 1) / 2) * height;
-  const activePts = points.filter((p) => p.active);
-  const path = activePts
-    .map((p, i) => `${i === 0 ? "M" : "L"}${toSvgX(p.x)},${toSvgY(p.y)}`)
-    .join(" ");
-
-  const cx = toSvgX(state.x);
-  const cy = toSvgY(state.y);
-  const vx = state.dxNorm * 40;
-  const vy = -state.dyNorm * 40;
-
-  return (
-    <div className="rounded-3xl border bg-white p-4 shadow-sm">
-      <div className="mb-3 text-lg font-semibold text-slate-800">2D Trajectory</div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-[520px]">
-        <rect x="0" y="0" width={width} height={height} fill="white" />
-        <line x1={width / 2} y1="0" x2={width / 2} y2={height} stroke="#cbd5e1" />
-        <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#cbd5e1" />
-        <rect x="1" y="1" width={width - 2} height={height - 2} fill="none" stroke="#e2e8f0" />
-        {path && <path d={path} fill="none" stroke="#2563eb" strokeWidth="3" />}
-        <circle cx={cx} cy={cy} r="7" fill="#0f172a" />
-        {state.active && <line x1={cx} y1={cy} x2={cx + vx} y2={cy + vy} stroke="#dc2626" strokeWidth="3" />}
-      </svg>
-    </div>
-  );
-}
-
-export default function AD7147WebDashboard() {
-  const [status, setStatus] = useState("Demo mode | GitHub Pages ready");
-  const [fullMatrix, setFullMatrix] = useState(() => zeros(FULL_ROWS, FULL_COLS));
-  const [baseline, setBaseline] = useState(() => zeros(4, 2));
-  const [history, setHistory] = useState([]);
-  const [trajHistory, setTrajHistory] = useState([]);
-  const [tick, setTick] = useState(0);
-  const [mode, setMode] = useState("demo");
-  const [socketUrl, setSocketUrl] = useState("ws://192.168.4.1:81");
-
-  const calibration = useMemo(
-    () => ({
-      delta: [0, 1064.547206, 1486.191394, 1744.18754, 1916.184971, 2077.432563, 2213.631985, 2295.769107, 2375.818882, 2435.934489, 2519.428388, 2579.961464, 2674.935774, 2759.473346, 2853.403982, 2905.587669, 2978.64483, 3030.828516, 3093.44894, 3187.379576, 3250],
-      pressure: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
-    }),
-    []
-  );
-
-  const trajStateRef = useRef({
-    x: 0,
-    y: 0,
-    angleDeg: 0,
-    dxNorm: 0,
-    dyNorm: 0,
-    totalWeight: 0,
-    active: false,
-    mapped: zeros(2, 4),
-    weights: zeros(2, 4),
-  });
-
-  useEffect(() => {
-    if (mode !== "demo") return;
-    const id = setInterval(() => {
-      setTick((t) => t + 1);
-      setFullMatrix(buildDemoFullMatrix(tick));
-    }, 120);
-    return () => clearInterval(id);
-  }, [mode, tick]);
-
-  useEffect(() => {
-    if (mode !== "ws") return;
-    let ws;
-    try {
-      ws = new WebSocket(socketUrl);
-      ws.onopen = () => setStatus(`WebSocket connected: ${socketUrl}`);
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (Array.isArray(msg.fullMatrix)) setFullMatrix(msg.fullMatrix);
-        } catch {
-          setStatus("Received non-JSON message");
-        }
-      };
-      ws.onerror = () => setStatus("WebSocket error");
-      ws.onclose = () => setStatus("WebSocket disconnected");
-    } catch {
-      setStatus("WebSocket init failed");
-    }
-    return () => ws?.close();
-  }, [mode, socketUrl]);
-
-  const selected = useMemo(() => extractSelected(fullMatrix), [fullMatrix]);
-  const delta = useMemo(
-    () => selected.map((row, r) => row.map((v, c) => Math.max(v - baseline[r][c], 0))),
-    [selected, baseline]
-  );
-  const pressure = useMemo(
-    () => delta.map((row) => row.map((v) => interp1d(calibration.delta, calibration.pressure, v))),
-    [delta, calibration]
-  );
-
-  useEffect(() => {
-    const ts = Date.now() / 1000;
-    const flatDelta = delta.flat();
-    const flatPressure = pressure.flat();
-
-    setHistory((prev) => {
-      const next = [...prev, { ts, delta: flatDelta, pressure: flatPressure }].slice(-MAX_HISTORY);
-      return next;
-    });
-
-    const nextTraj = estimateTrajectory(delta, trajStateRef.current);
-    trajStateRef.current = nextTraj;
-    setTrajHistory((prev) => [...prev, { ts, x: nextTraj.x, y: nextTraj.y, active: nextTraj.active }].slice(-1200));
-  }, [delta, pressure]);
-
-  const deltaSeries = useMemo(() => {
-    const cutoff = Date.now() / 1000 - TIME_WINDOW_SEC;
-    const recent = history.filter((h) => h.ts >= cutoff);
-    return Array.from({ length: 8 }, (_, i) => recent.map((h) => h.delta[i]));
-  }, [history]);
-
-  const pressureSeries = useMemo(() => {
-    const cutoff = Date.now() / 1000 - TIME_WINDOW_SEC;
-    const recent = history.filter((h) => h.ts >= cutoff);
-    return Array.from({ length: 8 }, (_, i) => recent.map((h) => h.pressure[i]));
-  }, [history]);
-
-  const recentTraj = useMemo(() => {
-    const cutoff = Date.now() / 1000 - TRAJ_WINDOW_SEC;
-    return trajHistory.filter((p) => p.ts >= cutoff);
-  }, [trajHistory]);
-
-  const currentTraj = trajStateRef.current;
-
-  return (
-    <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="rounded-3xl border bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">AD7147 Receiver Web Dashboard</h1>
-              <p className="mt-1 text-sm text-slate-600">Area response, pressure mapping, and 2D trajectory visualization</p>
-            </div>
-            <div className="rounded-2xl bg-slate-100 px-4 py-2 text-sm">{status}</div>
-          </div>
-
-          <div className="mt-5 grid gap-3 lg:grid-cols-[140px,1fr,180px]">
-            <select
-              className="rounded-2xl border px-4 py-3"
-              value={mode}
-              onChange={(e) => setMode(e.target.value)}
-            >
-              <option value="demo">Demo</option>
-              <option value="ws">WebSocket</option>
-            </select>
-            <input
-              className="rounded-2xl border px-4 py-3"
-              value={socketUrl}
-              onChange={(e) => setSocketUrl(e.target.value)}
-              placeholder="ws://192.168.4.1:81"
-            />
-            <button
-              className="rounded-2xl bg-slate-900 px-4 py-3 text-white"
-              onClick={() => setBaseline(selected.map((row) => [...row]))}
-            >
-              Zero / Baseline
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-[1.2fr,1.2fr,1fr]">
-          <div className="space-y-6">
-            <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <div className="mb-4 text-xl font-semibold">Area / Delta</div>
-              <Heatmap matrix={delta} maxValue={3000} unit="Δcount" />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {deltaSeries.map((series, i) => (
-                <MiniLineChart key={i} data={series} maxY={3000} label={CHANNEL_LABELS[i]} />
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <div className="mb-4 text-xl font-semibold">Pressure</div>
-              <Heatmap matrix={pressure} maxValue={100} unit="N" />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {pressureSeries.map((series, i) => (
-                <MiniLineChart key={i} data={series} maxY={100} color="#16a34a" label={CHANNEL_LABELS[i]} />
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <TrajectoryPlot points={recentTraj} state={currentTraj} />
-            <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <div className="mb-3 text-xl font-semibold">Trajectory State</div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl bg-slate-100 p-3">Position<br /><span className="text-base font-semibold">({currentTraj.x.toFixed(3)}, {currentTraj.y.toFixed(3)})</span></div>
-                <div className="rounded-2xl bg-slate-100 p-3">Angle<br /><span className="text-base font-semibold">{currentTraj.angleDeg.toFixed(1)}°</span></div>
-                <div className="rounded-2xl bg-slate-100 p-3">Dx<br /><span className="text-base font-semibold">{currentTraj.dxNorm.toFixed(3)}</span></div>
-                <div className="rounded-2xl bg-slate-100 p-3">Dy<br /><span className="text-base font-semibold">{currentTraj.dyNorm.toFixed(3)}</span></div>
-                <div className="rounded-2xl bg-slate-100 p-3">Weight<br /><span className="text-base font-semibold">{currentTraj.totalWeight.toFixed(2)}</span></div>
-                <div className="rounded-2xl bg-slate-100 p-3">State<br /><span className="text-base font-semibold">{currentTraj.active ? "Active" : "Inactive"}</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="card">
+        <h2>Trajectory</h2>
+        <canvas id="trajCanvas" width="360" height="360"></canvas>
       </div>
     </div>
-  );
-}
+
+    <div class="card">
+      <h2>Trajectory State</h2>
+      <div class="status">
+        <div class="item">Position: <span id="posText">(0.000, 0.000)</span></div>
+        <div class="item">Angle: <span id="angleText">0.0°</span></div>
+        <div class="item">Dx: <span id="dxText">0.000</span></div>
+        <div class="item">Dy: <span id="dyText">0.000</span></div>
+        <div class="item">Weight: <span id="weightText">0.00</span></div>
+        <div class="item">State: <span id="activeText">Inactive</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const deltaMap = document.getElementById("deltaMap");
+    const pressureMap = document.getElementById("pressureMap");
+    const canvas = document.getElementById("trajCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let traj = [];
+    let tick = 0;
+
+    function interp(x, y, v) {
+      if (v <= 0) return 0;
+      if (v <= x[0]) return y[0];
+      if (v >= x[x.length - 1]) return y[y.length - 1];
+      for (let i = 0; i < x.length - 1; i++) {
+        if (v >= x[i] && v <= x[i + 1]) {
+          const t = (v - x[i]) / (x[i + 1] - x[i]);
+          return y[i] + t * (y[i + 1] - y[i]);
+        }
+      }
+      return 0;
+    }
+
+    const calX = [0, 1064.5, 1486.2, 1744.2, 1916.2, 2077.4, 2213.6, 2295.8, 2375.8, 2435.9, 2519.4, 2580.0, 2674.9, 2759.5, 2853.4, 2905.6, 2978.6, 3030.8, 3093.4, 3187.4, 3250];
+    const calY = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+
+    function buildMatrix() {
+      const vals = [];
+      for (let i = 0; i < 8; i++) {
+        vals.push(Math.max(0, 1800 + 900 * Math.sin(tick / 10 + i * 0.5) + Math.random() * 80));
+      }
+      return vals;
+    }
+
+    function renderHeatmap(container, values, unit, maxVal) {
+      container.innerHTML = "";
+      values.forEach((v, i) => {
+        const alpha = Math.min(v / maxVal, 1);
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.style.background = `rgba(59,130,246,${0.15 + 0.65 * alpha})`;
+        cell.innerHTML = `<div class="small">CH${i + 1}</div>${v.toFixed(1)}<div class="small">${unit}</div>`;
+        container.appendChild(cell);
+      });
+    }
+
+    function renderTrajectory(x, y, dx, dy) {
+      traj.push({x, y});
+      if (traj.length > 80) traj.shift();
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      traj.forEach((p, i) => {
+        const px = (p.x + 1) / 2 * canvas.width;
+        const py = canvas.height - (p.y + 1) / 2 * canvas.height;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+
+      const cx = (x + 1) / 2 * canvas.width;
+      const cy = canvas.height - (y + 1) / 2 * canvas.height;
+
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#dc2626";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + dx * 40, cy - dy * 40);
+      ctx.stroke();
+    }
+
+    function update() {
+      tick += 1;
+      const delta = buildMatrix();
+      const pressure = delta.map(v => interp(calX, calY, v));
+
+      const left = delta[0] + delta[2] + delta[4] + delta[6];
+      const right = delta[1] + delta[3] + delta[5] + delta[7];
+      const top = delta[0] + delta[1] + delta[2] + delta[3];
+      const bottom = delta[4] + delta[5] + delta[6] + delta[7];
+
+      const total = delta.reduce((a, b) => a + b, 0);
+      const dx = (right - left) / total;
+      const dy = (top - bottom) / total;
+      const x = Math.max(-1, Math.min(1, dx * 1.3));
+      const y = Math.max(-1, Math.min(1, dy * 1.3));
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+      renderHeatmap(deltaMap, delta, "Δcount", 3200);
+      renderHeatmap(pressureMap, pressure, "N", 100);
+      renderTrajectory(x, y, dx, dy);
+
+      document.getElementById("posText").textContent = `(${x.toFixed(3)}, ${y.toFixed(3)})`;
+      document.getElementById("angleText").textContent = `${angle.toFixed(1)}°`;
+      document.getElementById("dxText").textContent = dx.toFixed(3);
+      document.getElementById("dyText").textContent = dy.toFixed(3);
+      document.getElementById("weightText").textContent = total.toFixed(2);
+      document.getElementById("activeText").textContent = "Active";
+    }
+
+    setInterval(update, 180);
+    update();
+  </script>
+</body>
+</html>
