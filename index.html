@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AD7147 Dashboard</title>
+  <title>AD7147 Receiver Dashboard</title>
   <style>
     body {
       margin: 0;
@@ -12,12 +12,12 @@
       color: #0f172a;
     }
     .container {
-      max-width: 1300px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 24px;
     }
     .card {
-      background: white;
+      background: #ffffff;
       border: 1px solid #e2e8f0;
       border-radius: 20px;
       padding: 20px;
@@ -27,12 +27,40 @@
     h1, h2 {
       margin-top: 0;
     }
-    .grid {
+    .topbar {
       display: grid;
-      gap: 16px;
+      grid-template-columns: 1.2fr 0.9fr 120px 120px 120px;
+      gap: 12px;
+      align-items: center;
     }
-    .grid-3 {
-      grid-template-columns: 1fr 1fr 1fr;
+    input, button {
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      padding: 0 12px;
+      font-size: 14px;
+    }
+    button {
+      cursor: pointer;
+      background: #0f172a;
+      color: white;
+      border: none;
+    }
+    button.secondary {
+      background: #334155;
+    }
+    button.warn {
+      background: #b91c1c;
+    }
+    .status {
+      margin-top: 14px;
+      color: #475569;
+      font-size: 14px;
+    }
+    .grid3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.05fr;
+      gap: 20px;
     }
     .heatmap {
       display: grid;
@@ -44,32 +72,49 @@
       padding: 18px;
       text-align: center;
       border: 1px solid #cbd5e1;
-      background: #dbeafe;
       font-weight: bold;
+      min-height: 72px;
+      box-sizing: border-box;
     }
     .small {
       font-size: 12px;
       color: #475569;
       font-weight: normal;
+      margin-bottom: 4px;
     }
-    .status {
+    .state-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
-    .status .item {
+    .state-item {
       background: #f1f5f9;
-      border-radius: 16px;
-      padding: 14px;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .value {
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 4px;
     }
     canvas {
       width: 100%;
-      background: white;
       border: 1px solid #cbd5e1;
       border-radius: 16px;
+      background: white;
     }
-    @media (max-width: 1000px) {
-      .grid-3 {
+    .note {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+    @media (max-width: 1100px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+      .grid3 {
         grid-template-columns: 1fr;
       }
     }
@@ -79,10 +124,23 @@
   <div class="container">
     <div class="card">
       <h1>AD7147 Receiver Web Dashboard</h1>
-      <div id="statusText">Demo mode | GitHub Pages deployed</div>
+
+      <div class="topbar">
+        <input id="ipInput" value="192.168.31.45" placeholder="ESP32 IP, e.g. 192.168.31.45" />
+        <input id="urlPreview" value="http://192.168.31.45/frame" readonly />
+        <button id="healthBtn" class="secondary">Health</button>
+        <button id="startBtn">Start</button>
+        <button id="stopBtn" class="warn">Stop</button>
+      </div>
+
+      <div class="status" id="statusText">Idle</div>
+      <div class="note">
+        Recommended polling interval: 200 ms. If the page is hosted on GitHub Pages and the browser blocks requests,
+        that is usually due to browser security restrictions on HTTPS pages loading HTTP resources.
+      </div>
     </div>
 
-    <div class="grid grid-3">
+    <div class="grid3">
       <div class="card">
         <h2>Area / Delta</h2>
         <div class="heatmap" id="deltaMap"></div>
@@ -95,33 +153,65 @@
 
       <div class="card">
         <h2>Trajectory</h2>
-        <canvas id="trajCanvas" width="360" height="360"></canvas>
+        <canvas id="trajCanvas" width="420" height="420"></canvas>
       </div>
     </div>
 
     <div class="card">
       <h2>Trajectory State</h2>
-      <div class="status">
-        <div class="item">Position: <span id="posText">(0.000, 0.000)</span></div>
-        <div class="item">Angle: <span id="angleText">0.0°</span></div>
-        <div class="item">Dx: <span id="dxText">0.000</span></div>
-        <div class="item">Dy: <span id="dyText">0.000</span></div>
-        <div class="item">Weight: <span id="weightText">0.00</span></div>
-        <div class="item">State: <span id="activeText">Inactive</span></div>
+      <div class="state-grid">
+        <div class="state-item">Frame ID<div class="value" id="frameText">0</div></div>
+        <div class="state-item">Position<div class="value" id="posText">(0.000, 0.000)</div></div>
+        <div class="state-item">Angle<div class="value" id="angleText">0.0°</div></div>
+        <div class="state-item">Total Weight<div class="value" id="weightText">0.00</div></div>
+        <div class="state-item">Dx<div class="value" id="dxText">0.000</div></div>
+        <div class="state-item">Dy<div class="value" id="dyText">0.000</div></div>
+        <div class="state-item">Pressure Min / Max<div class="value" id="pminmaxText">0.00 / 0.00</div></div>
+        <div class="state-item">Delta Min / Max<div class="value" id="dminmaxText">0.0 / 0.0</div></div>
       </div>
     </div>
   </div>
 
   <script>
+    const SELECTED_ROWS = [0, 1, 2, 3];
+    const SELECTED_COLS = [2, 3];
+    const CAL_X = [0, 1064.547206, 1486.191394, 1744.18754, 1916.184971, 2077.432563, 2213.631985, 2295.769107, 2375.818882, 2435.934489, 2519.428388, 2579.961464, 2674.935774, 2759.473346, 2853.403982, 2905.587669, 2978.64483, 3030.828516, 3093.44894, 3187.379576, 3250];
+    const CAL_Y = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+
+    const ipInput = document.getElementById("ipInput");
+    const urlPreview = document.getElementById("urlPreview");
+    const statusText = document.getElementById("statusText");
     const deltaMap = document.getElementById("deltaMap");
     const pressureMap = document.getElementById("pressureMap");
     const canvas = document.getElementById("trajCanvas");
     const ctx = canvas.getContext("2d");
 
-    let traj = [];
-    let tick = 0;
+    let timer = null;
+    let trajHistory = [];
+    let baseline = [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0]
+    ];
 
-    function interp(x, y, v) {
+    function getBaseUrl() {
+      const ip = ipInput.value.trim();
+      return `http://${ip}`;
+    }
+
+    function updateUrlPreview() {
+      urlPreview.value = `${getBaseUrl()}/frame`;
+    }
+
+    ipInput.addEventListener("input", updateUrlPreview);
+    updateUrlPreview();
+
+    function clamp(v, a, b) {
+      return Math.max(a, Math.min(b, v));
+    }
+
+    function interp1d(x, y, v) {
       if (v <= 0) return 0;
       if (v <= x[0]) return y[0];
       if (v >= x[x.length - 1]) return y[y.length - 1];
@@ -134,35 +224,102 @@
       return 0;
     }
 
-    const calX = [0, 1064.5, 1486.2, 1744.2, 1916.2, 2077.4, 2213.6, 2295.8, 2375.8, 2435.9, 2519.4, 2580.0, 2674.9, 2759.5, 2853.4, 2905.6, 2978.6, 3030.8, 3093.4, 3187.4, 3250];
-    const calY = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
-
-    function buildMatrix() {
-      const vals = [];
-      for (let i = 0; i < 8; i++) {
-        vals.push(Math.max(0, 1800 + 900 * Math.sin(tick / 10 + i * 0.5) + Math.random() * 80));
-      }
-      return vals;
+    function extractSelected(fullMatrix) {
+      return SELECTED_ROWS.map(r => SELECTED_COLS.map(c => fullMatrix[r][c]));
     }
 
-    function renderHeatmap(container, values, unit, maxVal) {
+    function deltaFromBaseline(selected) {
+      return selected.map((row, r) => row.map((v, c) => Math.max(v - baseline[r][c], 0)));
+    }
+
+    function pressureFromDelta(delta) {
+      return delta.map(row => row.map(v => interp1d(CAL_X, CAL_Y, v)));
+    }
+
+    function renderHeatmap(container, matrix, unit, maxValue, colorMode) {
       container.innerHTML = "";
-      values.forEach((v, i) => {
-        const alpha = Math.min(v / maxVal, 1);
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.style.background = `rgba(59,130,246,${0.15 + 0.65 * alpha})`;
-        cell.innerHTML = `<div class="small">CH${i + 1}</div>${v.toFixed(1)}<div class="small">${unit}</div>`;
-        container.appendChild(cell);
-      });
+      for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[0].length; c++) {
+          const value = matrix[r][c];
+          const alpha = clamp(value / maxValue, 0, 1);
+          const cell = document.createElement("div");
+          cell.className = "cell";
+
+          if (colorMode === "delta") {
+            cell.style.background = `rgba(37,99,235,${0.12 + 0.68 * alpha})`;
+          } else {
+            cell.style.background = `rgba(22,163,74,${0.10 + 0.68 * alpha})`;
+          }
+
+          cell.innerHTML = `
+            <div class="small">r${SELECTED_ROWS[r]}, c${SELECTED_COLS[c]}</div>
+            ${value.toFixed(colorMode === "delta" ? 1 : 2)}
+            <div class="small">${unit}</div>
+          `;
+          container.appendChild(cell);
+        }
+      }
     }
 
-    function renderTrajectory(x, y, dx, dy) {
-      traj.push({x, y});
-      if (traj.length > 80) traj.shift();
+    function estimateTrajectory(delta) {
+      // physical 2x4 = transpose of 4x2
+      const mapped = [
+        [delta[0][0], delta[1][0], delta[2][0], delta[3][0]],
+        [delta[0][1], delta[1][1], delta[2][1], delta[3][1]]
+      ];
+
+      const gridX = [
+        [-1.0, -0.3333, 0.3333, 1.0],
+        [-1.0, -0.3333, 0.3333, 1.0]
+      ];
+      const gridY = [
+        [1.0, 1.0, 1.0, 1.0],
+        [-1.0, -1.0, -1.0, -1.0]
+      ];
+
+      const threshold = 20;
+      const weights = mapped.map(row => row.map(v => Math.max(v - threshold, 0)));
+
+      let total = 0;
+      let x = 0;
+      let y = 0;
+
+      for (let r = 0; r < 2; r++) {
+        for (let c = 0; c < 4; c++) {
+          total += weights[r][c];
+          x += weights[r][c] * gridX[r][c];
+          y += weights[r][c] * gridY[r][c];
+        }
+      }
+
+      if (total > 1e-9) {
+        x /= total;
+        y /= total;
+      } else {
+        x = 0;
+        y = 0;
+      }
+
+      const leftSum = weights[0][0] + weights[0][1] + weights[1][0] + weights[1][1];
+      const rightSum = weights[0][2] + weights[0][3] + weights[1][2] + weights[1][3];
+      const topSum = weights[0].reduce((a, b) => a + b, 0);
+      const bottomSum = weights[1].reduce((a, b) => a + b, 0);
+
+      const dx = total > 1e-9 ? (rightSum - leftSum) / total : 0;
+      const dy = total > 1e-9 ? (topSum - bottomSum) / total : 0;
+      const angle = (Math.abs(dx) + Math.abs(dy)) > 1e-9 ? Math.atan2(dy, dx) * 180 / Math.PI : 0;
+
+      return { x, y, dx, dy, angle, total };
+    }
+
+    function drawTrajectory(state) {
+      trajHistory.push({ x: state.x, y: state.y });
+      if (trajHistory.length > 100) trajHistory.shift();
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(canvas.width / 2, 0);
       ctx.lineTo(canvas.width / 2, canvas.height);
@@ -173,16 +330,16 @@
       ctx.strokeStyle = "#2563eb";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      traj.forEach((p, i) => {
-        const px = (p.x + 1) / 2 * canvas.width;
-        const py = canvas.height - (p.y + 1) / 2 * canvas.height;
+      trajHistory.forEach((p, i) => {
+        const px = ((p.x + 1) / 2) * canvas.width;
+        const py = canvas.height - ((p.y + 1) / 2) * canvas.height;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       });
       ctx.stroke();
 
-      const cx = (x + 1) / 2 * canvas.width;
-      const cy = canvas.height - (y + 1) / 2 * canvas.height;
+      const cx = ((state.x + 1) / 2) * canvas.width;
+      const cy = canvas.height - ((state.y + 1) / 2) * canvas.height;
 
       ctx.fillStyle = "#0f172a";
       ctx.beginPath();
@@ -190,43 +347,80 @@
       ctx.fill();
 
       ctx.strokeStyle = "#dc2626";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + dx * 40, cy - dy * 40);
+      ctx.lineTo(cx + state.dx * 45, cy - state.dy * 45);
       ctx.stroke();
     }
 
-    function update() {
-      tick += 1;
-      const delta = buildMatrix();
-      const pressure = delta.map(v => interp(calX, calY, v));
-
-      const left = delta[0] + delta[2] + delta[4] + delta[6];
-      const right = delta[1] + delta[3] + delta[5] + delta[7];
-      const top = delta[0] + delta[1] + delta[2] + delta[3];
-      const bottom = delta[4] + delta[5] + delta[6] + delta[7];
-
-      const total = delta.reduce((a, b) => a + b, 0);
-      const dx = (right - left) / total;
-      const dy = (top - bottom) / total;
-      const x = Math.max(-1, Math.min(1, dx * 1.3));
-      const y = Math.max(-1, Math.min(1, dy * 1.3));
-      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-      renderHeatmap(deltaMap, delta, "Δcount", 3200);
-      renderHeatmap(pressureMap, pressure, "N", 100);
-      renderTrajectory(x, y, dx, dy);
-
-      document.getElementById("posText").textContent = `(${x.toFixed(3)}, ${y.toFixed(3)})`;
-      document.getElementById("angleText").textContent = `${angle.toFixed(1)}°`;
-      document.getElementById("dxText").textContent = dx.toFixed(3);
-      document.getElementById("dyText").textContent = dy.toFixed(3);
-      document.getElementById("weightText").textContent = total.toFixed(2);
-      document.getElementById("activeText").textContent = "Active";
+    async function checkHealth() {
+      const url = `${getBaseUrl()}/health`;
+      statusText.textContent = `Checking ${url} ...`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        statusText.textContent = `Health OK: ${JSON.stringify(data)}`;
+      } catch (err) {
+        statusText.textContent = `Health failed: ${err}`;
+      }
     }
 
-    setInterval(update, 180);
-    update();
+    async function fetchFrameOnce() {
+      const url = `${getBaseUrl()}/frame`;
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        const data = await res.json();
+
+        if (!data.fullMatrix || !Array.isArray(data.fullMatrix)) {
+          throw new Error("Invalid frame payload");
+        }
+
+        const selected = extractSelected(data.fullMatrix);
+        const delta = deltaFromBaseline(selected);
+        const pressure = pressureFromDelta(delta);
+        const traj = estimateTrajectory(delta);
+
+        renderHeatmap(deltaMap, delta, "Δcount", 3200, "delta");
+        renderHeatmap(pressureMap, pressure, "N", 100, "pressure");
+        drawTrajectory(traj);
+
+        const flatDelta = delta.flat();
+        const flatPressure = pressure.flat();
+
+        document.getElementById("frameText").textContent = data.frame_id ?? "-";
+        document.getElementById("posText").textContent = `(${traj.x.toFixed(3)}, ${traj.y.toFixed(3)})`;
+        document.getElementById("angleText").textContent = `${traj.angle.toFixed(1)}°`;
+        document.getElementById("weightText").textContent = traj.total.toFixed(2);
+        document.getElementById("dxText").textContent = traj.dx.toFixed(3);
+        document.getElementById("dyText").textContent = traj.dy.toFixed(3);
+        document.getElementById("pminmaxText").textContent = `${Math.min(...flatPressure).toFixed(2)} / ${Math.max(...flatPressure).toFixed(2)}`;
+        document.getElementById("dminmaxText").textContent = `${Math.min(...flatDelta).toFixed(1)} / ${Math.max(...flatDelta).toFixed(1)}`;
+
+        statusText.textContent = `Frame ${data.frame_id} loaded from ${url}`;
+      } catch (err) {
+        statusText.textContent = `Fetch failed: ${err}`;
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      fetchFrameOnce();
+      timer = setInterval(fetchFrameOnce, 200);
+      statusText.textContent = "Polling started";
+    }
+
+    function stopPolling() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      statusText.textContent = "Polling stopped";
+    }
+
+    document.getElementById("healthBtn").addEventListener("click", checkHealth);
+    document.getElementById("startBtn").addEventListener("click", startPolling);
+    document.getElementById("stopBtn").addEventListener("click", stopPolling);
   </script>
 </body>
 </html>
