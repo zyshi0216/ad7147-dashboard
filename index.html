@@ -11,11 +11,13 @@
       background: #f8fafc;
       color: #0f172a;
     }
+
     .container {
-      max-width: 1400px;
+      max-width: 1450px;
       margin: 0 auto;
       padding: 24px;
     }
+
     .card {
       background: #ffffff;
       border: 1px solid #e2e8f0;
@@ -24,97 +26,142 @@
       box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
       margin-bottom: 20px;
     }
+
     h1, h2 {
       margin-top: 0;
+      margin-bottom: 14px;
     }
+
     .topbar {
       display: grid;
-      grid-template-columns: 1.2fr 0.9fr 120px 120px 120px;
+      grid-template-columns: 1.2fr 0.95fr 120px 160px 120px 120px;
       gap: 12px;
       align-items: center;
     }
+
     input, button {
-      height: 42px;
+      height: 44px;
       border-radius: 12px;
       border: 1px solid #cbd5e1;
       padding: 0 12px;
       font-size: 14px;
+      box-sizing: border-box;
     }
+
+    input {
+      background: white;
+      color: #0f172a;
+    }
+
     button {
       cursor: pointer;
+      border: none;
       background: #0f172a;
       color: white;
-      border: none;
+      font-weight: 600;
     }
+
     button.secondary {
       background: #334155;
     }
+
     button.warn {
       background: #b91c1c;
     }
+
     .status {
       margin-top: 14px;
       color: #475569;
       font-size: 14px;
+      line-height: 1.5;
+      min-height: 22px;
     }
-    .grid3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1.05fr;
-      gap: 20px;
-    }
-    .heatmap {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    .cell {
-      border-radius: 16px;
-      padding: 18px;
-      text-align: center;
-      border: 1px solid #cbd5e1;
-      font-weight: bold;
-      min-height: 72px;
-      box-sizing: border-box;
-    }
-    .small {
-      font-size: 12px;
-      color: #475569;
-      font-weight: normal;
-      margin-bottom: 4px;
-    }
-    .state-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .state-item {
-      background: #f1f5f9;
-      border-radius: 14px;
-      padding: 12px 14px;
-      font-size: 14px;
-    }
-    .value {
-      font-size: 16px;
-      font-weight: 700;
-      margin-top: 4px;
-    }
-    canvas {
-      width: 100%;
-      border: 1px solid #cbd5e1;
-      border-radius: 16px;
-      background: white;
-    }
+
     .note {
       font-size: 13px;
       color: #64748b;
       margin-top: 10px;
       line-height: 1.5;
     }
-    @media (max-width: 1100px) {
+
+    .grid3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.05fr;
+      gap: 20px;
+    }
+
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .cell {
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+      border: 1px solid #cbd5e1;
+      font-weight: bold;
+      min-height: 76px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #475569;
+      font-weight: normal;
+      margin-bottom: 4px;
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .state-item {
+      background: #f1f5f9;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      min-height: 72px;
+      box-sizing: border-box;
+    }
+
+    .value {
+      font-size: 16px;
+      font-weight: 700;
+      margin-top: 4px;
+      color: #0f172a;
+    }
+
+    canvas {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+      background: white;
+      display: block;
+    }
+
+    @media (max-width: 1200px) {
+      .grid3 {
+        grid-template-columns: 1fr;
+      }
+
+      .state-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 900px) {
       .topbar {
         grid-template-columns: 1fr;
       }
-      .grid3 {
+
+      .state-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -126,17 +173,19 @@
       <h1>AD7147 Receiver Web Dashboard</h1>
 
       <div class="topbar">
-        <input id="ipInput" value="172.20.10.3" placeholder="ESP32 IP, e.g. 172.20.10.3" />
-        <input id="urlPreview" value="http://172.20.10.3/frame" readonly />
+        <input id="ipInput" value="192.168.31.45" placeholder="ESP32 IP, e.g. 192.168.31.45" />
+        <input id="urlPreview" value="http://192.168.31.45/frame" readonly />
         <button id="healthBtn" class="secondary">Health</button>
+        <button id="zeroBtn" class="secondary">Zero / Calibrate</button>
         <button id="startBtn">Start</button>
         <button id="stopBtn" class="warn">Stop</button>
       </div>
 
       <div class="status" id="statusText">Idle</div>
+
       <div class="note">
-        Recommended polling interval: 200 ms. If the page is hosted on GitHub Pages and the browser blocks requests,
-        that is usually due to browser security restrictions on HTTPS pages loading HTTP resources.
+        Workflow: first click <b>Health</b>, then click <b>Zero / Calibrate</b>, and finally click <b>Start</b>.
+        Calibration collects 2 seconds of selected-channel data and uses the maximum value of each channel as baseline.
       </div>
     </div>
 
@@ -153,7 +202,7 @@
 
       <div class="card">
         <h2>Trajectory</h2>
-        <canvas id="trajCanvas" width="420" height="420"></canvas>
+        <canvas id="trajCanvas" width="430" height="430"></canvas>
       </div>
     </div>
 
@@ -168,6 +217,7 @@
         <div class="state-item">Dy<div class="value" id="dyText">0.000</div></div>
         <div class="state-item">Pressure Min / Max<div class="value" id="pminmaxText">0.00 / 0.00</div></div>
         <div class="state-item">Delta Min / Max<div class="value" id="dminmaxText">0.0 / 0.0</div></div>
+        <div class="state-item">Baseline State<div class="value" id="baselineText">OFF</div></div>
       </div>
     </div>
   </div>
@@ -175,8 +225,6 @@
   <script>
     const SELECTED_ROWS = [0, 1, 2, 3];
     const SELECTED_COLS = [2, 3];
-    const CAL_X = [0, 1064.547206, 1486.191394, 1744.18754, 1916.184971, 2077.432563, 2213.631985, 2295.769107, 2375.818882, 2435.934489, 2519.428388, 2579.961464, 2674.935774, 2759.473346, 2853.403982, 2905.587669, 2978.64483, 3030.828516, 3093.44894, 3187.379576, 3250];
-    const CAL_Y = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
 
     const ipInput = document.getElementById("ipInput");
     const urlPreview = document.getElementById("urlPreview");
@@ -187,7 +235,9 @@
     const ctx = canvas.getContext("2d");
 
     let timer = null;
+    let isCalibrating = false;
     let trajHistory = [];
+
     let baseline = [
       [0, 0],
       [0, 0],
@@ -211,17 +261,9 @@
       return Math.max(a, Math.min(b, v));
     }
 
-    function interp1d(x, y, v) {
-      if (v <= 0) return 0;
-      if (v <= x[0]) return y[0];
-      if (v >= x[x.length - 1]) return y[y.length - 1];
-      for (let i = 0; i < x.length - 1; i++) {
-        if (v >= x[i] && v <= x[i + 1]) {
-          const t = (v - x[i]) / (x[i + 1] - x[i]);
-          return y[i] + t * (y[i + 1] - y[i]);
-        }
-      }
-      return 0;
+    function mean(arr) {
+      if (!arr.length) return 0;
+      return arr.reduce((a, b) => a + b, 0) / arr.length;
     }
 
     function extractSelected(fullMatrix) {
@@ -229,11 +271,18 @@
     }
 
     function deltaFromBaseline(selected) {
-      return selected.map((row, r) => row.map((v, c) => Math.max(v - baseline[r][c], 0)));
+      return selected.map((row, r) =>
+        row.map((v, c) => Math.max(v - baseline[r][c], 0))
+      );
     }
 
     function pressureFromDelta(delta) {
-      return delta.map(row => row.map(v => interp1d(CAL_X, CAL_Y, v)));
+      return delta.map(row =>
+        row.map(x => {
+          const p = -0.0000033 * x * x + 0.0385 * x + 0.2;
+          return clamp(p, 0, 100);
+        })
+      );
     }
 
     function renderHeatmap(container, matrix, unit, maxValue, colorMode) {
@@ -246,9 +295,9 @@
           cell.className = "cell";
 
           if (colorMode === "delta") {
-            cell.style.background = `rgba(37,99,235,${0.12 + 0.68 * alpha})`;
+            cell.style.background = `rgba(37,99,235,${0.10 + 0.70 * alpha})`;
           } else {
-            cell.style.background = `rgba(22,163,74,${0.10 + 0.68 * alpha})`;
+            cell.style.background = `rgba(22,163,74,${0.08 + 0.70 * alpha})`;
           }
 
           cell.innerHTML = `
@@ -262,7 +311,7 @@
     }
 
     function estimateTrajectory(delta) {
-      // physical 2x4 = transpose of 4x2
+      // 4x2 -> physical 2x4 (transpose)
       const mapped = [
         [delta[0][0], delta[1][0], delta[2][0], delta[3][0]],
         [delta[0][1], delta[1][1], delta[2][1], delta[3][1]]
@@ -314,10 +363,11 @@
 
     function drawTrajectory(state) {
       trajHistory.push({ x: state.x, y: state.y });
-      if (trajHistory.length > 100) trajHistory.shift();
+      if (trajHistory.length > 120) trajHistory.shift();
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // axes
       ctx.strokeStyle = "#cbd5e1";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -327,8 +377,13 @@
       ctx.lineTo(canvas.width, canvas.height / 2);
       ctx.stroke();
 
+      // border
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
+      // history
       ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.6;
       ctx.beginPath();
       trajHistory.forEach((p, i) => {
         const px = ((p.x + 1) / 2) * canvas.width;
@@ -338,6 +393,7 @@
       });
       ctx.stroke();
 
+      // point
       const cx = ((state.x + 1) / 2) * canvas.width;
       const cy = canvas.height - ((state.y + 1) / 2) * canvas.height;
 
@@ -346,6 +402,7 @@
       ctx.arc(cx, cy, 6, 0, Math.PI * 2);
       ctx.fill();
 
+      // direction
       ctx.strokeStyle = "#dc2626";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -354,11 +411,23 @@
       ctx.stroke();
     }
 
+    async function fetchRawFrame() {
+      const url = `${getBaseUrl()}/frame`;
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+
+      if (!data.fullMatrix || !Array.isArray(data.fullMatrix)) {
+        throw new Error("Invalid frame payload");
+      }
+
+      return data;
+    }
+
     async function checkHealth() {
       const url = `${getBaseUrl()}/health`;
       statusText.textContent = `Checking ${url} ...`;
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
         const data = await res.json();
         statusText.textContent = `Health OK: ${JSON.stringify(data)}`;
       } catch (err) {
@@ -366,15 +435,69 @@
       }
     }
 
-    async function fetchFrameOnce() {
-      const url = `${getBaseUrl()}/frame`;
-      try {
-        const res = await fetch(url, { cache: "no-store" });
-        const data = await res.json();
+    async function runCalibration() {
+      if (isCalibrating) return;
 
-        if (!data.fullMatrix || !Array.isArray(data.fullMatrix)) {
-          throw new Error("Invalid frame payload");
+      isCalibrating = true;
+      stopPolling();
+      statusText.textContent = "Calibrating: collecting 2 seconds of data...";
+
+      const samples = [];
+      const start = Date.now();
+
+      try {
+        while (Date.now() - start < 2000) {
+          const data = await fetchRawFrame();
+          const selected = extractSelected(data.fullMatrix);
+          samples.push(selected);
+
+          const elapsed = (Date.now() - start) / 1000;
+          statusText.textContent = `Calibrating... ${elapsed.toFixed(1)} / 2.0 s`;
+
+          await new Promise(resolve => setTimeout(resolve, 120));
         }
+
+        if (samples.length === 0) {
+          throw new Error("No calibration samples collected");
+        }
+
+        const newBaseline = [
+          [0, 0],
+          [0, 0],
+          [0, 0],
+          [0, 0]
+        ];
+
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 2; c++) {
+            let maxVal = -Infinity;
+            for (const s of samples) {
+              if (s[r][c] > maxVal) maxVal = s[r][c];
+            }
+            newBaseline[r][c] = maxVal;
+          }
+        }
+
+        baseline = newBaseline;
+        const flatB = baseline.flat();
+
+        document.getElementById("baselineText").textContent = "ON";
+        statusText.textContent =
+          `Calibration done | baseline min=${Math.min(...flatB).toFixed(1)}, ` +
+          `mean=${mean(flatB).toFixed(1)}, max=${Math.max(...flatB).toFixed(1)}`;
+
+      } catch (err) {
+        statusText.textContent = `Calibration failed: ${err}`;
+      } finally {
+        isCalibrating = false;
+      }
+    }
+
+    async function fetchFrameOnce() {
+      if (isCalibrating) return;
+
+      try {
+        const data = await fetchRawFrame();
 
         const selected = extractSelected(data.fullMatrix);
         const delta = deltaFromBaseline(selected);
@@ -387,6 +510,7 @@
 
         const flatDelta = delta.flat();
         const flatPressure = pressure.flat();
+        const flatBaseline = baseline.flat();
 
         document.getElementById("frameText").textContent = data.frame_id ?? "-";
         document.getElementById("posText").textContent = `(${traj.x.toFixed(3)}, ${traj.y.toFixed(3)})`;
@@ -394,10 +518,18 @@
         document.getElementById("weightText").textContent = traj.total.toFixed(2);
         document.getElementById("dxText").textContent = traj.dx.toFixed(3);
         document.getElementById("dyText").textContent = traj.dy.toFixed(3);
-        document.getElementById("pminmaxText").textContent = `${Math.min(...flatPressure).toFixed(2)} / ${Math.max(...flatPressure).toFixed(2)}`;
-        document.getElementById("dminmaxText").textContent = `${Math.min(...flatDelta).toFixed(1)} / ${Math.max(...flatDelta).toFixed(1)}`;
+        document.getElementById("pminmaxText").textContent =
+          `${Math.min(...flatPressure).toFixed(2)} / ${Math.max(...flatPressure).toFixed(2)}`;
+        document.getElementById("dminmaxText").textContent =
+          `${Math.min(...flatDelta).toFixed(1)} / ${Math.max(...flatDelta).toFixed(1)}`;
+        document.getElementById("baselineText").textContent =
+          flatBaseline.some(v => v !== 0) ? "ON" : "OFF";
 
-        statusText.textContent = `Frame ${data.frame_id} loaded from ${url}`;
+        const baselineState = flatBaseline.some(v => v !== 0)
+          ? `Baseline ON | min=${Math.min(...flatBaseline).toFixed(1)}, max=${Math.max(...flatBaseline).toFixed(1)}`
+          : "Baseline OFF";
+
+        statusText.textContent = `Frame ${data.frame_id} loaded | ${baselineState}`;
       } catch (err) {
         statusText.textContent = `Fetch failed: ${err}`;
       }
@@ -415,12 +547,19 @@
         clearInterval(timer);
         timer = null;
       }
-      statusText.textContent = "Polling stopped";
+      if (!isCalibrating) {
+        statusText.textContent = "Polling stopped";
+      }
     }
 
     document.getElementById("healthBtn").addEventListener("click", checkHealth);
+    document.getElementById("zeroBtn").addEventListener("click", runCalibration);
     document.getElementById("startBtn").addEventListener("click", startPolling);
     document.getElementById("stopBtn").addEventListener("click", stopPolling);
+
+    // initial empty heatmaps
+    renderHeatmap(deltaMap, [[0, 0], [0, 0], [0, 0], [0, 0]], "Δcount", 3200, "delta");
+    renderHeatmap(pressureMap, [[0, 0], [0, 0], [0, 0], [0, 0]], "N", 100, "pressure");
   </script>
 </body>
 </html>
